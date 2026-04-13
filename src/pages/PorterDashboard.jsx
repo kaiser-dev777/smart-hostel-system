@@ -17,7 +17,7 @@ export default function PorterDashboard() {
   const [announcement, setAnnouncement] = useState({ title: '', message: '' });
   const [isPosting, setIsPosting] = useState(false);
 
-  // NEW: Audit Modal States
+  // Audit Modal States
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSubmittingAudit, setIsSubmittingAudit] = useState(false);
   const [auditForm, setAuditForm] = useState(null);
@@ -38,14 +38,14 @@ export default function PorterDashboard() {
   }, [navigate]);
 
   const fetchDashboardData = async () => {
-    // Work Orders
+    // 1. Fetch Maintenance Requests
     const { data: reqData } = await supabase
       .from('maintenance_requests')
       .select('*')
       .order('created_at', { ascending: false });
     if (reqData) setRequests(reqData);
 
-    // Advanced Inventory
+    // 2. Fetch Advanced Inventory
     const { data: invData } = await supabase
       .from('inventory')
       .select('*')
@@ -68,9 +68,9 @@ export default function PorterDashboard() {
     setIsPosting(false);
   };
 
-  // --- NEW: AUDIT FUNCTIONS ---
+  // AUDIT FUNCTIONS
   const openAuditModal = (room) => {
-    setAuditForm({ ...room }); // Copy room data into form state
+    setAuditForm({ ...room }); 
     setIsAuditModalOpen(true);
   };
 
@@ -88,21 +88,20 @@ export default function PorterDashboard() {
         lockers_qty: auditForm.lockers_qty,
         lockers_condition: auditForm.lockers_condition,
         remarks: auditForm.remarks,
-        last_updated: new Date().toISOString() // Updates to right now
+        last_updated: new Date().toISOString() 
       })
       .eq('id', auditForm.id);
 
     if (!error) {
       alert("Monthly Audit Updated Successfully!");
       setIsAuditModalOpen(false);
-      fetchDashboardData(); // Refresh the UI
+      fetchDashboardData(); 
     } else {
       alert("Error saving audit: " + error.message);
     }
     setIsSubmittingAudit(false);
   };
 
-  // Helper to color-code individual statuses
   const getStatusColor = (status) => {
     if (status === 'Good') return 'text-green-500 bg-green-50';
     if (status === 'Fair') return 'text-yellow-600 bg-yellow-50';
@@ -127,7 +126,7 @@ export default function PorterDashboard() {
         </button>
       </div>
 
-      {/* ANNOUNCEMENT BOX (MinimizedBox for cleaner look) */}
+      {/* ANNOUNCEMENT BOX */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl text-white shadow-xl print:hidden">
         <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
           <Megaphone size={22} className="animate-bounce" /> Broadcast Notice
@@ -139,6 +138,69 @@ export default function PorterDashboard() {
             {isPosting ? '...' : 'Send'}
           </button>
         </form>
+      </div>
+
+      {/* ================================================== */}
+      {/* WORK ORDERS SECTION (RESTORED)                     */}
+      {/* ================================================== */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
+            <ClipboardList size={24} />
+          </div>
+          <h3 className="text-xl font-bold text-gray-800">Maintenance Pipeline</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-4">
+          {requests.length === 0 ? (
+            <p className="text-gray-400 italic text-center py-4">No active work orders.</p>
+          ) : (
+            requests.map((req) => (
+              <div key={req.id} className={`group p-5 rounded-2xl border-2 flex flex-col md:flex-row justify-between md:items-center gap-4 transition-all hover:shadow-md ${
+                req.status === 'Resolved' ? 'bg-green-50/50 border-green-100' : 
+                req.status === 'Declined' ? 'bg-red-50/50 border-red-100' : 
+                'bg-white border-gray-100'
+              }`}>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-black text-gray-900 bg-gray-100 px-2 py-0.5 rounded text-sm uppercase">{req.room_number}</span>
+                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">{req.student_name}</span>
+                  </div>
+                  <p className="text-gray-800 font-semibold">{req.issue_type}</p>
+                  <div className="flex items-center gap-1 text-[10px] text-gray-400 font-bold mt-2">
+                    <Clock size={12} /> {new Date(req.created_at).toLocaleString()}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {req.status === 'Pending' ? (
+                    <>
+                      <button 
+                        onClick={() => handleUpdateStatus(req.id, 'Declined')}
+                        className="bg-white text-red-500 border-2 border-red-100 hover:bg-red-500 hover:text-white px-4 py-2 rounded-xl font-bold transition-all text-sm flex items-center gap-1"
+                      >
+                        <XCircle size={16} /> Decline
+                      </button>
+                      <button 
+                        onClick={() => handleUpdateStatus(req.id, 'Resolved')}
+                        className="bg-green-600 text-white hover:bg-green-700 px-5 py-2 rounded-xl font-bold transition-all text-sm flex items-center gap-1 shadow-lg shadow-green-100"
+                      >
+                        <CheckCircle size={16} /> Resolve
+                      </button>
+                    </>
+                  ) : (
+                    <span className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 ${
+                      req.status === 'Resolved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {req.status === 'Resolved' ? <ShieldCheck size={14} /> : <AlertTriangle size={14} />}
+                      {req.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* --- DYNAMIC ROOM INVENTORY AUDIT MODULE --- */}
@@ -163,7 +225,6 @@ export default function PorterDashboard() {
                      
                      <div className="flex justify-between items-start mb-4">
                         <h4 className="text-xl font-black text-gray-900">{item.room_number}</h4>
-                        {/* UPDATE BUTTON */}
                         <button 
                            onClick={() => openAuditModal(item)}
                            className="p-2 bg-gray-50 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center gap-1 text-xs font-bold"
@@ -172,9 +233,7 @@ export default function PorterDashboard() {
                         </button>
                      </div>
                      
-                     {/* GRANULAR PROPERTIES */}
                      <div className="space-y-3 flex-1">
-                        {/* Beds */}
                         <div className="flex justify-between items-center p-2 rounded-lg bg-gray-50">
                            <div className="flex items-center gap-2">
                               <Bed size={16} className="text-blue-500" />
@@ -184,7 +243,6 @@ export default function PorterDashboard() {
                               {item.beds_condition}
                            </span>
                         </div>
-                        {/* Fans */}
                         <div className="flex justify-between items-center p-2 rounded-lg bg-gray-50">
                            <div className="flex items-center gap-2">
                               <Wind size={16} className="text-cyan-500" />
@@ -194,7 +252,6 @@ export default function PorterDashboard() {
                               {item.fans_condition}
                            </span>
                         </div>
-                        {/* Lockers */}
                         <div className="flex justify-between items-center p-2 rounded-lg bg-gray-50">
                            <div className="flex items-center gap-2">
                               <Archive size={16} className="text-purple-500" />
@@ -206,7 +263,6 @@ export default function PorterDashboard() {
                         </div>
                      </div>
 
-                     {/* REMARKS & TIMESTAMP */}
                      <div className="mt-4 pt-4 border-t border-gray-100">
                         <div className="flex items-start gap-2 mb-2">
                            <MessageSquare size={14} className="text-gray-400 mt-0.5" />
@@ -223,14 +279,10 @@ export default function PorterDashboard() {
          </div>
       </div>
 
-      {/* ========================================== */}
-      {/* UPDATE AUDIT MODAL (Pop-up Overlay)        */}
-      {/* ========================================== */}
+      {/* UPDATE AUDIT MODAL */}
       {isAuditModalOpen && auditForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 print:hidden">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            
-            {/* Modal Header */}
             <div className="bg-gray-900 text-white p-5 flex justify-between items-center">
                <div>
                   <h3 className="text-xl font-black">Monthly Audit Update</h3>
@@ -241,13 +293,8 @@ export default function PorterDashboard() {
                </button>
             </div>
 
-            {/* Modal Form */}
             <form onSubmit={handleAuditSubmit} className="p-6 space-y-6">
-               
-               {/* 3-Column Grid for Properties */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  
-                  {/* Bed Config */}
                   <div className="space-y-2 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                      <label className="flex items-center gap-2 font-bold text-gray-800 text-sm mb-3">
                         <Bed size={16} className="text-blue-500"/> Beds
@@ -266,7 +313,6 @@ export default function PorterDashboard() {
                      </div>
                   </div>
 
-                  {/* Fan Config */}
                   <div className="space-y-2 bg-cyan-50/50 p-4 rounded-xl border border-cyan-100">
                      <label className="flex items-center gap-2 font-bold text-gray-800 text-sm mb-3">
                         <Wind size={16} className="text-cyan-500"/> Fans
@@ -285,7 +331,6 @@ export default function PorterDashboard() {
                      </div>
                   </div>
 
-                  {/* Locker Config */}
                   <div className="space-y-2 bg-purple-50/50 p-4 rounded-xl border border-purple-100">
                      <label className="flex items-center gap-2 font-bold text-gray-800 text-sm mb-3">
                         <Archive size={16} className="text-purple-500"/> Lockers
@@ -303,10 +348,8 @@ export default function PorterDashboard() {
                         </select>
                      </div>
                   </div>
-
                </div>
 
-               {/* Remarks Section */}
                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <label className="flex items-center gap-2 font-bold text-gray-800 text-sm mb-2">
                      <MessageSquare size={16} className="text-gray-500"/> Porter Remarks / Observations
@@ -320,7 +363,6 @@ export default function PorterDashboard() {
                   />
                </div>
 
-               {/* Modal Actions */}
                <div className="flex justify-end gap-3 pt-4 border-t">
                   <button type="button" onClick={() => setIsAuditModalOpen(false)} className="px-6 py-2.5 rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors">
                      Cancel
@@ -334,9 +376,43 @@ export default function PorterDashboard() {
         </div>
       )}
 
-      {/* PRINT WORK ORDERS (Hidden when not printing) */}
+      {/* PRINT WORK ORDERS */}
       <div className="hidden print:block space-y-6">
-         {/* ... (Print layout remains same) ... */}
+        <div className="text-center border-b-4 border-gray-900 pb-6">
+          <h1 className="text-4xl font-black text-gray-900">HOSTEL AUDIT REPORT</h1>
+          <p className="text-gray-600 font-bold mt-2 uppercase tracking-widest">Official Porter Records</p>
+          <p className="text-gray-500 mt-1">Issued By: {porterProfile.full_name} | {new Date().toLocaleDateString()}</p>
+        </div>
+        
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="p-3 border border-gray-300 font-bold text-sm">ROOM</th>
+              <th className="p-3 border border-gray-300 font-bold text-sm">ISSUES</th>
+              <th className="p-3 border border-gray-300 font-bold text-sm">DATE</th>
+              <th className="p-3 border border-gray-300 font-bold text-sm">STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((req) => (
+              <tr key={req.id}>
+                <td className="p-3 border border-gray-300 font-bold">{req.room_number}</td>
+                <td className="p-3 border border-gray-300 text-sm">{req.issue_type}</td>
+                <td className="p-3 border border-gray-300 text-sm">{new Date(req.created_at).toLocaleDateString()}</td>
+                <td className="p-3 border border-gray-300 font-black text-xs uppercase">{req.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        
+        <div className="mt-20 flex justify-around">
+            <div className="w-56 border-t-2 border-gray-900 pt-3 text-center">
+               <p className="font-black text-sm uppercase">Porter Signature</p>
+            </div>
+            <div className="w-56 border-t-2 border-gray-900 pt-3 text-center">
+               <p className="font-black text-sm uppercase">Admin Seal</p>
+            </div>
+        </div>
       </div>
 
     </div>
