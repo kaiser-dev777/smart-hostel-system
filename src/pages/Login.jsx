@@ -21,7 +21,7 @@ export default function Login() {
 
     try {
       // ==========================================
-      // 1. STUDENT LOGIN (Uses the New Database Logic)
+      // 1. STUDENT LOGIN (New Smart Allocation Logic)
       // ==========================================
       if (role === 'student') {
         const { data, error } = await supabase
@@ -38,49 +38,44 @@ export default function Login() {
         }
 
         if (!data.is_allocated) {
-          setErrorMsg("You have not been assigned a room yet. Please see the Admin.");
+          setErrorMsg("Your allocation is pending. Please see the Admin.");
           setIsLoading(false);
           return;
         }
 
+        // Save student info to localStorage
         localStorage.setItem('currentUser', JSON.stringify({
-          role: 'student',
-          full_name: data.full_name,
-          matric_no: data.matric_no,
-          room_number: data.room_assigned
+          ...data,
+          role: 'student'
         }));
         
         navigate('/student-dashboard');
       } 
       
       // ==========================================
-      // 2. TEMPORARY ADMIN LOGIN (Hardcoded)
+      // 2. ADMIN & PORTER LOGIN (Using original PROFILES table)
       // ==========================================
-      else if (role === 'admin') {
-        if (identifier === 'admin' && password === 'admin') {
-          localStorage.setItem('currentUser', JSON.stringify({
-            role: 'admin',
-            full_name: 'Super Admin'
-          }));
-          navigate('/super-admin');
-        } else {
-          setErrorMsg("Invalid Admin Credentials. (Hint: use admin / admin)");
-        }
-      }
+      else {
+        // Query your original 'profiles' table for staff
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', identifier) // Staff usually use email to login
+          .eq('password', password)
+          .eq('role', role)
+          .single();
 
-      // ==========================================
-      // 3. TEMPORARY PORTER LOGIN (Hardcoded)
-      // ==========================================
-      else if (role === 'porter') {
-        if (identifier === 'porter' && password === 'porter') {
-          localStorage.setItem('currentUser', JSON.stringify({
-            role: 'porter',
-            full_name: 'Chief Porter'
-          }));
-          navigate('/porter-dashboard');
-        } else {
-          setErrorMsg("Invalid Porter Credentials. (Hint: use porter / porter)");
+        if (error || !data) {
+          setErrorMsg(`Invalid ${role} credentials. Please check your email and password.`);
+          setIsLoading(false);
+          return;
         }
+
+        // Success! Save the FULL profile to localStorage so dashboards aren't blank
+        localStorage.setItem('currentUser', JSON.stringify(data));
+
+        if (role === 'admin') navigate('/super-admin');
+        if (role === 'porter') navigate('/porter-dashboard');
       }
 
     } catch (err) {
@@ -105,52 +100,41 @@ export default function Login() {
           
           {/* ROLE SELECTOR TABS */}
           <div className="flex bg-gray-100 p-1 rounded-xl mb-8">
-            <button
-              type="button"
-              onClick={() => { setRole('student'); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
-              className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === 'student' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <GraduationCap size={16} /> Student
-            </button>
-            <button
-              type="button"
-              onClick={() => { setRole('porter'); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
-              className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === 'porter' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <HardHat size={16} /> Porter
-            </button>
-            <button
-              type="button"
-              onClick={() => { setRole('admin'); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
-              className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <Shield size={16} /> Admin
-            </button>
+            {['student', 'porter', 'admin'].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => { setRole(r); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
+                className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === r ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {r === 'student' && <GraduationCap size={16} />}
+                {r === 'porter' && <HardHat size={16} />}
+                {r === 'admin' && <Shield size={16} />}
+                {r.charAt(0).toUpperCase() + r.slice(1)}
+              </button>
+            ))}
           </div>
 
           <form className="space-y-6" onSubmit={handleLogin}>
-            
-            {/* IDENTIFIER INPUT */}
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
-                {role === 'student' ? 'Matriculation Number' : 'Username'}
+                {role === 'student' ? 'Matriculation Number' : 'Email Address'}
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  type="text"
+                  type={role === 'student' ? 'text' : 'email'}
                   required
                   className="block w-full pl-10 pr-3 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800"
-                  placeholder={role === 'student' ? 'e.g. CSC/2023/045' : `Enter ${role} username`}
+                  placeholder={role === 'student' ? 'e.g. CSC/2023/045' : 'your@email.com'}
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* PASSWORD INPUT */}
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
                 {role === 'student' ? 'Assigned Room (Password)' : 'Password'}
@@ -163,38 +147,28 @@ export default function Login() {
                   type="password"
                   required
                   className="block w-full pl-10 pr-3 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800"
-                  placeholder={role === 'student' ? 'e.g. Block A - Room 12' : '••••••••'}
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              {role === 'student' && (
-                 <p className="mt-2 text-[11px] text-gray-500 font-medium px-1">
-                   <span className="font-bold text-blue-500 underline">Tip:</span> Your password is the exact name of the room you were assigned.
-                 </p>
-              )}
             </div>
 
-            {/* ERROR MESSAGE DISPLAY */}
             {errorMsg && (
-              <div className="bg-red-50 text-red-600 text-sm font-bold p-4 rounded-xl border border-red-100 text-center animate-pulse">
+              <div className="bg-red-50 text-red-600 text-sm font-bold p-4 rounded-xl border border-red-100 text-center">
                 {errorMsg}
               </div>
             )}
 
-            {/* SUBMIT BUTTON */}
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-2xl shadow-lg shadow-blue-100 text-sm font-black text-white bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-50 active:scale-95"
-              >
-                {isLoading ? 'Authenticating...' : `Login as ${role.charAt(0).toUpperCase() + role.slice(1)}`}
-                {!isLoading && <LogIn size={18} />}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-2xl shadow-lg text-sm font-black text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isLoading ? 'Authenticating...' : `Login as ${role.charAt(0).toUpperCase() + role.slice(1)}`}
+              {!isLoading && <LogIn size={18} />}
+            </button>
           </form>
-
         </div>
       </div>
     </div>
