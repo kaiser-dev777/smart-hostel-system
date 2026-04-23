@@ -2,143 +2,200 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Lock, LogIn, GraduationCap, ShieldCheck } from 'lucide-react';
+import { User, Lock, LogIn, Shield, HardHat, GraduationCap } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
   
-  // State
-  const [matricNo, setMatricNo] = useState('');
+  const [role, setRole] = useState('student'); 
+  const [identifier, setIdentifier] = useState(''); 
   const [password, setPassword] = useState('');
+  
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleStudentLogin = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
 
     try {
-      // 1. Query the 'students' table we created in Step 1
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('matric_no', matricNo)
-        .eq('password', password)
-        .single();
+      // ==========================================
+      // 1. STUDENT LOGIN (Uses the New Database Logic)
+      // ==========================================
+      if (role === 'student') {
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .eq('matric_no', identifier)
+          .eq('password', password)
+          .single();
 
-      // 2. Check if student exists and password matches
-      if (error || !data) {
-        setErrorMsg("Invalid Matric Number or Room Password.");
-        setIsLoading(false);
-        return;
-      }
+        if (error || !data) {
+          setErrorMsg("Invalid Matric Number or Room Password.");
+          setIsLoading(false);
+          return;
+        }
 
-      // 3. Check if they have actually been assigned a room yet
-      if (!data.is_allocated) {
-        setErrorMsg("Your allocation is pending. Please check back later.");
-        setIsLoading(false);
-        return;
-      }
+        if (!data.is_allocated) {
+          setErrorMsg("You have not been assigned a room yet. Please see the Admin.");
+          setIsLoading(false);
+          return;
+        }
 
-      // 4. Success! Save info and go to dashboard
-      localStorage.setItem('currentUser', JSON.stringify({
-        role: 'student',
-        full_name: data.full_name,
-        matric_no: data.matric_no,
-        room_number: data.room_assigned
-      }));
+        localStorage.setItem('currentUser', JSON.stringify({
+          role: 'student',
+          full_name: data.full_name,
+          matric_no: data.matric_no,
+          room_number: data.room_assigned
+        }));
+        
+        navigate('/student-dashboard');
+      } 
       
-      navigate('/student-dashboard');
+      // ==========================================
+      // 2. TEMPORARY ADMIN LOGIN (Hardcoded)
+      // ==========================================
+      else if (role === 'admin') {
+        if (identifier === 'admin' && password === 'admin') {
+          localStorage.setItem('currentUser', JSON.stringify({
+            role: 'admin',
+            full_name: 'Super Admin'
+          }));
+          navigate('/super-admin');
+        } else {
+          setErrorMsg("Invalid Admin Credentials. (Hint: use admin / admin)");
+        }
+      }
+
+      // ==========================================
+      // 3. TEMPORARY PORTER LOGIN (Hardcoded)
+      // ==========================================
+      else if (role === 'porter') {
+        if (identifier === 'porter' && password === 'porter') {
+          localStorage.setItem('currentUser', JSON.stringify({
+            role: 'porter',
+            full_name: 'Chief Porter'
+          }));
+          navigate('/porter-dashboard');
+        } else {
+          setErrorMsg("Invalid Porter Credentials. (Hint: use porter / porter)");
+        }
+      }
 
     } catch (err) {
-      setErrorMsg("Connection error. Please try again.");
+      setErrorMsg("A system error occurred. Please try again.");
     }
 
     setIsLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        
-        {/* Branding */}
-        <div className="text-center mb-10">
-          <div className="inline-flex p-4 bg-blue-600 rounded-3xl shadow-xl shadow-blue-100 mb-4">
-            <GraduationCap className="text-white" size={40} />
-          </div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Student Portal</h1>
-          <p className="text-gray-500 font-medium">Enter your credentials to access your room</p>
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+        <div className="mx-auto h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg mb-4">
+          <Shield className="text-white" size={32} />
         </div>
+        <h2 className="text-3xl font-black text-gray-900">Hostel Command</h2>
+        <p className="mt-2 text-sm text-gray-600 font-medium">Smart Allocation & Management System</p>
+      </div>
 
-        {/* Login Card */}
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-          <form onSubmit={handleStudentLogin} className="space-y-6">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-3xl sm:px-10 border border-gray-100">
+          
+          {/* ROLE SELECTOR TABS */}
+          <div className="flex bg-gray-100 p-1 rounded-xl mb-8">
+            <button
+              type="button"
+              onClick={() => { setRole('student'); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
+              className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === 'student' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <GraduationCap size={16} /> Student
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRole('porter'); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
+              className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === 'porter' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <HardHat size={16} /> Porter
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRole('admin'); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
+              className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Shield size={16} /> Admin
+            </button>
+          </div>
+
+          <form className="space-y-6" onSubmit={handleLogin}>
             
-            {/* Matric No Field */}
+            {/* IDENTIFIER INPUT */}
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1">Matriculation Number</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                <input 
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
+                {role === 'student' ? 'Matriculation Number' : 'Username'}
+              </label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
                   type="text"
                   required
-                  placeholder="e.g. CSC/2023/001"
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800 transition-all"
-                  value={matricNo}
-                  onChange={(e) => setMatricNo(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800"
+                  placeholder={role === 'student' ? 'e.g. CSC/2023/045' : `Enter ${role} username`}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Password Field */}
+            {/* PASSWORD INPUT */}
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1">Room Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                <input 
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
+                {role === 'student' ? 'Assigned Room (Password)' : 'Password'}
+              </label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
                   type="password"
                   required
-                  placeholder="Your Assigned Room & Block"
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800 transition-all"
+                  className="block w-full pl-10 pr-3 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800"
+                  placeholder={role === 'student' ? 'e.g. Block A - Room 12' : '••••••••'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              <p className="mt-3 text-[11px] text-gray-400 leading-relaxed px-1">
-                <span className="font-bold text-blue-500 underline italic">Tip:</span> Your password is the exact name of the room you were assigned (e.g., "Block A - Room 10").
-              </p>
+              {role === 'student' && (
+                 <p className="mt-2 text-[11px] text-gray-500 font-medium px-1">
+                   <span className="font-bold text-blue-500 underline">Tip:</span> Your password is the exact name of the room you were assigned.
+                 </p>
+              )}
             </div>
 
-            {/* Error Message */}
+            {/* ERROR MESSAGE DISPLAY */}
             {errorMsg && (
-              <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm font-bold border border-red-100 animate-pulse text-center">
+              <div className="bg-red-50 text-red-600 text-sm font-bold p-4 rounded-xl border border-red-100 text-center animate-pulse">
                 {errorMsg}
               </div>
             )}
 
-            {/* Submit Button */}
-            <button 
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-100 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-            >
-              {isLoading ? 'Verifying...' : 'Login to Dashboard'}
-              <LogIn size={20} />
-            </button>
+            {/* SUBMIT BUTTON */}
+            <div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-2xl shadow-lg shadow-blue-100 text-sm font-black text-white bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-50 active:scale-95"
+              >
+                {isLoading ? 'Authenticating...' : `Login as ${role.charAt(0).toUpperCase() + role.slice(1)}`}
+                {!isLoading && <LogIn size={18} />}
+              </button>
+            </div>
           </form>
-        </div>
 
-        {/* Staff Shortcut - Just so you can still get to your Admin tools! */}
-        <div className="mt-8 text-center">
-          <button 
-            onClick={() => navigate('/super-admin')} 
-            className="inline-flex items-center gap-2 text-xs font-black text-gray-400 hover:text-blue-600 transition-colors uppercase tracking-widest"
-          >
-            <ShieldCheck size={14} /> Admin Access Point
-          </button>
         </div>
-
       </div>
     </div>
   );
