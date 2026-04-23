@@ -1,26 +1,22 @@
 // src/pages/SuperAdminDashboard.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, Users, PlusCircle, Building, 
-  CheckCircle, ShieldAlert 
-} from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { Users, UserPlus, Home, ArrowRightLeft, CheckCircle, Shield } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
   const [adminProfile, setAdminProfile] = useState(null);
   
-  // States
-  const [roomStats, setRoomStats] = useState([]);
-  const [unallocatedStudents, setUnallocatedStudents] = useState([]);
-  
-  // Add Room States
-  const [showAddRoomForm, setShowAddRoomForm] = useState(false);
-  const [newRoom, setNewRoom] = useState({ name: '', capacity: 6 });
-  const [isSubmittingRoom, setIsSubmittingRoom] = useState(false);
+  // Registration State
+  const [newStudent, setNewStudent] = useState({ fullName: '', matricNo: '' });
+  const [isRegistering, setIsRegistering] = useState(false);
 
-  // Allocation States
+  // Allocation State
+  const [unallocatedStudents, setUnallocatedStudents] = useState([]);
+  const [allocatedStudents, setAllocatedStudents] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [isAllocating, setIsAllocating] = useState(false);
@@ -37,96 +33,70 @@ export default function SuperAdminDashboard() {
       return;
     }
     setAdminProfile(user);
-    fetchDashboardData();
+    fetchData();
   }, [navigate]);
 
-  const fetchDashboardData = async () => {
-    fetchRoomOccupancy();
-    fetchUnallocatedStudents();
-  };
+  const fetchData = async () => {
+    // Fetch Students
+    const { data: studentsData } = await supabase.from('students').select('*').order('created_at', { ascending: false });
+    if (studentsData) {
+      setUnallocatedStudents(studentsData.filter(s => !s.is_allocated));
+      setAllocatedStudents(studentsData.filter(s => s.is_allocated));
+    }
 
-  // 1. Fetch Dynamic Room Occupancy
-  const fetchRoomOccupancy = async () => {
-    const { data: dbRooms } = await supabase.from('rooms').select('*');
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('room_number')
-      .not('room_number', 'is', null);
-
-    if (dbRooms && profiles) {
-      const counts = profiles.reduce((acc, user) => {
-        acc[user.room_number] = (acc[user.room_number] || 0) + 1;
-        return acc;
-      }, {});
-
-      const stats = dbRooms.map(room => ({
-        name: room.room_name,
-        capacity: room.capacity,
-        occupancy: counts[room.room_name] || 0,
-        isFull: (counts[room.room_name] || 0) >= room.capacity
-      }));
-
-      stats.sort((a, b) => a.name.localeCompare(b.name));
-      setRoomStats(stats);
+    // Fetch Rooms from the inventory table we created earlier
+    const { data: roomsData } = await supabase.from('inventory').select('room_number').order('room_number', { ascending: true });
+    if (roomsData) {
+      setRooms(roomsData);
     }
   };
 
-  // 2. Fetch Students Needing Rooms
-  const fetchUnallocatedStudents = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'student')
-      .is('room_number', null);
-    if (data) setUnallocatedStudents(data);
-  };
-
-  // 3. Handle Adding a New Room to the Database
-  const handleAddRoom = async (e) => {
+  // 1. REGISTER NEW STUDENT
+  const handleRegisterStudent = async (e) => {
     e.preventDefault();
-    setIsSubmittingRoom(true);
-    const formattedName = newRoom.name.trim();
+    setIsRegistering(true);
 
-    const { error } = await supabase
-      .from('rooms')
-      .insert([{ 
-        room_name: formattedName, 
-        capacity: parseInt(newRoom.capacity) 
-      }]);
+    const { error } = await supabase.from('students').insert([{
+      full_name: newStudent.fullName,
+      matric_no: newStudent.matricNo
+    }]);
 
     if (!error) {
-      alert(`Successfully added ${formattedName} to the system!`);
-      setNewRoom({ name: '', capacity: 6 });
-      setShowAddRoomForm(false);
-      fetchRoomOccupancy();
+      alert(`Successfully registered ${newStudent.fullName}!`);
+      setNewStudent({ fullName: '', matricNo: '' });
+      fetchData(); // Refresh lists
     } else {
-      if (error.code === '23505') {
-        alert("Error: This room already exists in the system.");
-      } else {
-        alert("Error adding room: " + error.message);
-      }
+      alert("Registration failed. Ensure Matric No is unique. Error: " + error.message);
     }
-    setIsSubmittingRoom(false);
+    setIsRegistering(false);
   };
 
-  // 4. Handle Allocating a Student to a Room
+  // 2. ASSIGN ROOM & GENERATE PASSWORD
   const handleAllocateStudent = async (e) => {
     e.preventDefault();
-    if (!selectedStudentId || !selectedRoom) return;
+    if (!selectedStudentId || !selectedRoom) {
+      alert("Please select both a student and a room.");
+      return;
+    }
     setIsAllocating(true);
 
+    // This is the "Magic" update. It sets the room AND creates the password
     const { error } = await supabase
-      .from('profiles')
-      .update({ room_number: selectedRoom })
+      .from('students')
+      .update({
+        room_assigned: selectedRoom,
+        password: selectedRoom, // The password is now the room block!
+        is_allocated: true
+      })
       .eq('id', selectedStudentId);
 
     if (!error) {
-      alert("Student successfully allocated!");
+      alert(`Success! Student assigned to ${selectedRoom}. Their dashboard is now active.`);
       setSelectedStudentId('');
       setSelectedRoom('');
-      fetchDashboardData(); // Refresh everything
+      fetchData();
     } else {
-      alert("Error allocating student: " + error.message);
+      alert("Allocation failed: " + error.message);
     }
     setIsAllocating(false);
   };
@@ -134,159 +104,159 @@ export default function SuperAdminDashboard() {
   if (!adminProfile) return <div className="p-10 text-center font-bold">Loading Admin...</div>;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-6xl mx-auto space-y-8 pb-10">
+      
       {/* HEADER */}
-      <div className="flex justify-between items-end border-b pb-4">
-        <div>
-          <h2 className="text-3xl font-black text-gray-800 flex items-center gap-2">
-            <ShieldAlert className="text-purple-600" size={32} />
-            Super Admin Command Center
-          </h2>
-          <p className="text-gray-500 font-medium">System overview and allocation management</p>
-        </div>
+      <div>
+        <h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">
+          <Shield className="text-blue-600" size={32} /> Super Admin Control
+        </h2>
+        <p className="text-gray-500 font-medium mt-1">Smart Student Allocation & Registration</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         
-        {/* LEFT COLUMN: Controls */}
-        <div className="col-span-1 lg:col-span-2 space-y-8">
-          
-          {/* --- MANUAL ROOM ADD MODULE --- */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Building className="text-blue-500" size={24} />
-                System Room Inventory
-              </h3>
-              <button 
-                onClick={() => setShowAddRoomForm(!showAddRoomForm)}
-                className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-bold transition-all text-sm flex items-center gap-2"
-              >
-                {showAddRoomForm ? 'Cancel' : <><PlusCircle size={16}/> Open New Room</>}
-              </button>
+        {/* --- MODULE 1: REGISTER STUDENT --- */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+              <UserPlus size={24} />
             </div>
-
-            {showAddRoomForm && (
-              <form onSubmit={handleAddRoom} className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col md:flex-row gap-4 items-end animate-in fade-in slide-in-from-top-4 mb-4">
-                <div className="flex-1 w-full">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Room Name</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="e.g., Block C - Room 10"
-                    className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                    value={newRoom.name}
-                    onChange={(e) => setNewRoom({...newRoom, name: e.target.value})}
-                  />
-                </div>
-                <div className="w-full md:w-32">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Capacity</label>
-                  <input 
-                    type="number" 
-                    required min="1" max="12"
-                    className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                    value={newRoom.capacity}
-                    onChange={(e) => setNewRoom({...newRoom, capacity: e.target.value})}
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={isSubmittingRoom}
-                  className="w-full md:w-auto bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-all disabled:opacity-70"
-                >
-                  {isSubmittingRoom ? 'Saving...' : 'Save Room'}
-                </button>
-              </form>
-            )}
-
-            {/* Smart Allocation Form */}
-            <div className="mt-6 border-t pt-6">
-              <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Users className="text-green-500" size={20} /> Smart Student Allocation
-              </h4>
-              <form onSubmit={handleAllocateStudent} className="flex flex-col md:flex-row gap-4">
-                <select 
-                  required
-                  className="flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500"
-                  value={selectedStudentId}
-                  onChange={(e) => setSelectedStudentId(e.target.value)}
-                >
-                  <option value="">-- Select Unallocated Student --</option>
-                  {unallocatedStudents.map(student => (
-                    <option key={student.id} value={student.id}>
-                      {student.full_name} ({student.matric_number})
-                    </option>
-                  ))}
-                </select>
-
-                {/* THE SMART DROPDOWN - Only shows rooms that are not full */}
-                <select 
-                  required
-                  className="flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500"
-                  value={selectedRoom}
-                  onChange={(e) => setSelectedRoom(e.target.value)}
-                >
-                  <option value="">-- Select Available Room --</option>
-                  {roomStats
-                    .filter(room => !room.isFull) 
-                    .map((room) => (
-                      <option key={room.name} value={room.name}>
-                        {room.name} ({room.capacity - room.occupancy} beds left)
-                      </option>
-                  ))}
-                </select>
-
-                <button 
-                  type="submit" 
-                  disabled={isAllocating || !selectedStudentId || !selectedRoom}
-                  className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-700 transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isAllocating ? 'Assigning...' : <><CheckCircle size={18}/> Assign</>}
-                </button>
-              </form>
-              {unallocatedStudents.length === 0 && (
-                <p className="text-sm text-green-600 mt-2 font-bold flex items-center gap-1">
-                  <CheckCircle size={16} /> All registered students have been assigned a room!
-                </p>
-              )}
-            </div>
+            <h3 className="text-xl font-bold text-gray-800">Register Student Info</h3>
           </div>
+          
+          <form onSubmit={handleRegisterStudent} className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase">Full Name</label>
+              <input 
+                type="text" required
+                placeholder="e.g., Emmanuel Joseph"
+                className="w-full p-3 mt-1 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                value={newStudent.fullName}
+                onChange={(e) => setNewStudent({...newStudent, fullName: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase">Matriculation Number</label>
+              <input 
+                type="text" required
+                placeholder="e.g., CSC/2023/045"
+                className="w-full p-3 mt-1 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                value={newStudent.matricNo}
+                onChange={(e) => setNewStudent({...newStudent, matricNo: e.target.value})}
+              />
+            </div>
+            <button 
+              type="submit" disabled={isRegistering}
+              className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all shadow-md disabled:opacity-50"
+            >
+              {isRegistering ? 'Registering...' : 'Add Student to Database'}
+            </button>
+          </form>
         </div>
 
-        {/* RIGHT COLUMN: Live Room Status Grid */}
-        <div className="col-span-1">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-full">
-            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-4">
-              <LayoutDashboard className="text-indigo-500" size={24} />
-              Live Room Status
-            </h3>
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-              {roomStats.length === 0 ? (
-                <p className="text-gray-500 text-sm italic">No rooms in database. Add a room to start.</p>
+        {/* --- MODULE 2: SMART ALLOCATION --- */}
+        <div className="bg-gradient-to-br from-blue-600 to-cyan-700 p-6 rounded-2xl text-white shadow-xl">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-white/20 rounded-lg text-white">
+              <ArrowRightLeft size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold">Assign Room & Activate Dashboard</h3>
+              <p className="text-xs text-blue-100 font-medium">Auto-generates login credentials</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleAllocateStudent} className="space-y-5">
+            <div>
+              <label className="text-xs font-bold text-blue-100 uppercase">Select Unallocated Student</label>
+              <select 
+                required
+                className="w-full p-3 mt-1 border-none rounded-xl bg-white text-gray-900 outline-none font-medium"
+                value={selectedStudentId}
+                onChange={(e) => setSelectedStudentId(e.target.value)}
+              >
+                <option value="" disabled>-- Choose a Student --</option>
+                {unallocatedStudents.map(student => (
+                  <option key={student.id} value={student.id}>
+                    {student.full_name} ({student.matric_no})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-blue-100 uppercase">Select Available Room</label>
+              <select 
+                required
+                className="w-full p-3 mt-1 border-none rounded-xl bg-white text-gray-900 outline-none font-medium"
+                value={selectedRoom}
+                onChange={(e) => setSelectedRoom(e.target.value)}
+              >
+                <option value="" disabled>-- Choose a Room --</option>
+                {rooms.map(room => (
+                  <option key={room.room_number} value={room.room_number}>
+                    {room.room_number}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button 
+              type="submit" disabled={isAllocating}
+              className="w-full bg-white text-blue-700 font-black py-3 rounded-xl hover:bg-blue-50 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+            >
+              {isAllocating ? 'Allocating...' : 'Assign Room & Activate Login'}
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+      {/* --- MODULE 3: ACTIVE ALLOCATIONS LEDGER --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-100 rounded-lg text-green-600">
+              <CheckCircle size={24} />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800">Active Allocations Ledger</h3>
+          </div>
+          <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-black">
+            {allocatedStudents.length} Students Assigned
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold rounded-tl-xl">Student Name</th>
+                <th className="p-4 font-bold">Matric No (Username)</th>
+                <th className="p-4 font-bold">Room & Block (Password)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {allocatedStudents.length === 0 ? (
+                <tr><td colSpan="3" className="p-8 text-center text-gray-400 italic">No students allocated yet.</td></tr>
               ) : (
-                roomStats.map((room, idx) => (
-                  <div key={idx} className={`p-3 rounded-lg border flex justify-between items-center ${
-                    room.isFull ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'
-                  }`}>
-                    <div>
-                      <p className="font-bold text-gray-800 text-sm">{room.name}</p>
-                      <p className={`text-xs font-bold ${room.isFull ? 'text-red-600' : 'text-green-600'}`}>
-                        {room.occupancy} / {room.capacity} Students
-                      </p>
-                    </div>
-                    {room.isFull && (
-                      <span className="bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">
-                        Full
+                allocatedStudents.map((student) => (
+                  <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-4 font-bold text-gray-800">{student.full_name}</td>
+                    <td className="p-4 font-mono text-sm text-gray-600">{student.matric_no}</td>
+                    <td className="p-4">
+                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-xs font-black whitespace-nowrap">
+                        {student.room_assigned}
                       </span>
-                    )}
-                  </div>
+                    </td>
+                  </tr>
                 ))
               )}
-            </div>
-          </div>
+            </tbody>
+          </table>
         </div>
-
       </div>
+
     </div>
   );
 }
