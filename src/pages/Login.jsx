@@ -2,89 +2,155 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Lock, LogIn, Shield, HardHat, GraduationCap } from 'lucide-react';
+import { User, Lock, LogIn, Shield, HardHat, GraduationCap, Info } from 'lucide-react';
+
+// ─── Per-role credential rules ────────────────────────────────────────────────
+// The 'profiles' table uses the 'matric_number' column to store the login
+// identifier for ALL roles (email for staff, matric no for students).
+const ROLE_CONFIG = {
+  student: {
+    identifierLabel: 'Matriculation Number',
+    identifierType: 'text',
+    identifierPlaceholder: 'e.g. FCP/CSC/23/1046',
+    // Matric format used in DB: FACULTY/DEPT/YY/NUMBER
+    identifierPattern: /^[A-Z]+\/[A-Z]+\/\d{2,4}\/\d+$/i,
+    identifierHint: 'Format: FAC/DEPT/YY/NUMBER — e.g. FCP/CSC/23/1046',
+    passwordLabel: 'Room Password',
+    passwordPlaceholder: 'e.g. 25A or 102C',
+    // Room passwords in DB are short alphanumeric strings
+    passwordPattern: /^.{1,}$/,
+    passwordHint: 'Your assigned room code (given by Admin)',
+  },
+  porter: {
+    identifierLabel: 'Staff Identifier',
+    identifierType: 'text',
+    identifierPlaceholder: 'e.g. Bala Porter',
+    identifierPattern: /^.{2,}$/,
+    identifierHint: 'Your name or ID as registered by Admin',
+    passwordLabel: 'Password',
+    passwordPlaceholder: '••••••••',
+    passwordPattern: /^.{4,}$/,
+    passwordHint: 'Password assigned to you by Admin',
+  },
+  admin: {
+    identifierLabel: 'Admin Identifier',
+    identifierType: 'text',
+    identifierPlaceholder: 'e.g. kaiser@university.edu.ng',
+    identifierPattern: /^.{2,}$/,
+    identifierHint: 'Your email or ID as registered in the system',
+    passwordLabel: 'Password',
+    passwordPlaceholder: '••••••••',
+    passwordPattern: /^.{4,}$/,
+    passwordHint: 'Password assigned to you by the system',
+  },
+};
 
 export default function Login() {
   const navigate = useNavigate();
-  
-  const [role, setRole] = useState('student'); 
-  const [identifier, setIdentifier] = useState(''); 
+
+  const [role, setRole] = useState('student');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [identifierTouched, setIdentifierTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
+  const config = ROLE_CONFIG[role];
+
+  // ─── Switch role and reset all state ─────────────────────────────────────────
+  const switchRole = (r) => {
+    setRole(r);
+    setIdentifier('');
+    setPassword('');
+    setErrorMsg('');
+    setIdentifierTouched(false);
+    setPasswordTouched(false);
+  };
+
+  const identifierInvalid =
+    identifierTouched && identifier !== '' && !config.identifierPattern.test(identifier);
+  const passwordInvalid =
+    passwordTouched && password !== '' && !config.passwordPattern.test(password);
+
+  // ─── Submit handler ───────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
     setErrorMsg('');
 
+    if (!config.identifierPattern.test(identifier)) {
+      setErrorMsg(`Invalid ${config.identifierLabel} format. ${config.identifierHint}`);
+      setIdentifierTouched(true);
+      return;
+    }
+    if (!config.passwordPattern.test(password)) {
+      setErrorMsg(`Invalid password format. ${config.passwordHint}`);
+      setPasswordTouched(true);
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      // ==========================================
-      // 1. STUDENT LOGIN (New Smart Allocation Logic)
-      // ==========================================
+      // ── 1. STUDENT LOGIN ──────────────────────────────────────────────────────
       if (role === 'student') {
-        const { data, error } = await supabase
-          .from('students')
-          .select('*')
-          .eq('matric_no', identifier)
-          .eq('password', password)
-          .single();
-
-        if (error || !data) {
-          setErrorMsg("Invalid Matric Number or Room Password.");
-          setIsLoading(false);
-          return;
-        }
-
-        if (!data.is_allocated) {
-          setErrorMsg("Your allocation is pending. Please see the Admin.");
-          setIsLoading(false);
-          return;
-        }
-
-        // Save student info to localStorage
-        localStorage.setItem('currentUser', JSON.stringify({
-          ...data,
-          role: 'student'
-        }));
-        
-        navigate('/student-dashboard');
-      } 
-      
-      // ==========================================
-      // 2. ADMIN & PORTER LOGIN (Using original PROFILES table)
-      // ==========================================
-      else {
-        // Query your original 'profiles' table for staff
+        // Students are stored in the 'profiles' table with role='student'
+        // identifier = matric_number, password = password
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('email', identifier) // Staff usually use email to login
+          .eq('matric_number', identifier)
+          .eq('password', password)
+          .ilike('role', 'student')   // handles 'Student' or 'student' casing
+          .single();
+
+        if (error || !data) {
+          setErrorMsg('Invalid Matric Number or Room Password. Please check and try again.');
+          setIsLoading(false);
+          return;
+        }
+
+        if (!data.room_number) {
+          setErrorMsg('Your room allocation is pending. Please see the Admin.');
+          setIsLoading(false);
+          return;
+        }
+
+        localStorage.setItem('currentUser', JSON.stringify({ ...data, role: 'student' }));
+        navigate('/student-dashboard');
+
+      // ── 2. PORTER / ADMIN LOGIN ───────────────────────────────────────────────
+      } else {
+        // Staff identifier is stored in the 'matric_number' column for all profiles
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('matric_number', identifier)
           .eq('password', password)
           .eq('role', role)
           .single();
 
         if (error || !data) {
-          setErrorMsg(`Invalid ${role} credentials. Please check your email and password.`);
+          setErrorMsg(`Invalid ${role} credentials. Please check your identifier and password.`);
           setIsLoading(false);
           return;
         }
 
-        // Success! Save the FULL profile to localStorage so dashboards aren't blank
         localStorage.setItem('currentUser', JSON.stringify(data));
 
         if (role === 'admin') navigate('/super-admin');
         if (role === 'porter') navigate('/porter-dashboard');
       }
-
     } catch (err) {
-      setErrorMsg("A system error occurred. Please try again.");
+      setErrorMsg('A system error occurred. Please try again.');
     }
 
     setIsLoading(false);
   };
 
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
@@ -97,15 +163,17 @@ export default function Login() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-3xl sm:px-10 border border-gray-100">
-          
-          {/* ROLE SELECTOR TABS */}
+
+          {/* ── ROLE SELECTOR TABS ── */}
           <div className="flex bg-gray-100 p-1 rounded-xl mb-8">
             {['student', 'porter', 'admin'].map((r) => (
               <button
                 key={r}
                 type="button"
-                onClick={() => { setRole(r); setIdentifier(''); setPassword(''); setErrorMsg(''); }}
-                className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${role === r ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => switchRole(r)}
+                className={`flex-1 flex justify-center items-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${
+                  role === r ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
               >
                 {r === 'student' && <GraduationCap size={16} />}
                 {r === 'porter' && <HardHat size={16} />}
@@ -115,29 +183,47 @@ export default function Login() {
             ))}
           </div>
 
+          {/* ── FORMAT HINT BANNER ── */}
+          <div className="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-3 flex gap-2 items-start">
+            <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
+            <div className="text-xs text-blue-700 space-y-1">
+              <p><span className="font-bold">{config.identifierLabel}:</span> {config.identifierHint}</p>
+              <p><span className="font-bold">Password:</span> {config.passwordHint}</p>
+            </div>
+          </div>
+
           <form className="space-y-6" onSubmit={handleLogin}>
+
+            {/* ── IDENTIFIER FIELD ── */}
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
-                {role === 'student' ? 'Matriculation Number' : 'Email Address'}
+                {config.identifierLabel}
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  type={role === 'student' ? 'text' : 'email'}
+                  type={config.identifierType}
                   required
-                  className="block w-full pl-10 pr-3 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800"
-                  placeholder={role === 'student' ? 'e.g. CSC/2023/045' : 'your@email.com'}
+                  className={`block w-full pl-10 pr-3 py-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800 ${
+                    identifierInvalid ? 'border-red-400 bg-red-50' : 'border-transparent'
+                  }`}
+                  placeholder={config.identifierPlaceholder}
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
+                  onBlur={() => setIdentifierTouched(true)}
                 />
               </div>
+              {identifierInvalid && (
+                <p className="mt-1 text-xs text-red-500 font-semibold pl-1">{config.identifierHint}</p>
+              )}
             </div>
 
+            {/* ── PASSWORD FIELD ── */}
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
-                {role === 'student' ? 'Assigned Room (Password)' : 'Password'}
+                {config.passwordLabel}
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -146,20 +232,28 @@ export default function Login() {
                 <input
                   type="password"
                   required
-                  className="block w-full pl-10 pr-3 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800"
-                  placeholder="••••••••"
+                  className={`block w-full pl-10 pr-3 py-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all sm:text-sm font-bold text-gray-800 ${
+                    passwordInvalid ? 'border-red-400 bg-red-50' : 'border-transparent'
+                  }`}
+                  placeholder={config.passwordPlaceholder}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => setPasswordTouched(true)}
                 />
               </div>
+              {passwordInvalid && (
+                <p className="mt-1 text-xs text-red-500 font-semibold pl-1">{config.passwordHint}</p>
+              )}
             </div>
 
+            {/* ── ERROR MESSAGE ── */}
             {errorMsg && (
               <div className="bg-red-50 text-red-600 text-sm font-bold p-4 rounded-xl border border-red-100 text-center">
                 {errorMsg}
               </div>
             )}
 
+            {/* ── SUBMIT ── */}
             <button
               type="submit"
               disabled={isLoading}

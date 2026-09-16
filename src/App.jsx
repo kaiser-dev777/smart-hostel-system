@@ -4,7 +4,7 @@ import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import PorterDashboard from './pages/PorterDashboard';
 import AdminDashboard from './pages/AdminDashboard';
-import Navbar from './components/Navbar'; // Import the new Navbar
+import Navbar from './components/Navbar';
 
 function App() {
   return (
@@ -16,9 +16,9 @@ function App() {
         <main className="p-4 md:p-8">
           <Routes>
             <Route path="/" element={<Login />} />
-            <Route path="/student" element={<StudentDashboard />} />
-            <Route path="/porter" element={<PorterDashboard />} />
-            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/student-dashboard" element={<StudentDashboard />} />
+            <Route path="/porter-dashboard" element={<PorterDashboard />} />
+            <Route path="/super-admin" element={<AdminDashboard />} />
           </Routes>
         </main>
       </div>
