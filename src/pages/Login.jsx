@@ -96,14 +96,12 @@ export default function Login() {
     try {
       // ── 1. STUDENT LOGIN ──────────────────────────────────────────────────────
       if (role === 'student') {
-        // Students are stored in the 'profiles' table with role='student'
-        // identifier = matric_number, password = password
+        // All students now live in the 'students' table (matric_no, password, is_allocated)
         const { data, error } = await supabase
-          .from('profiles')
+          .from('students')
           .select('*')
-          .eq('matric_number', identifier)
+          .eq('matric_no', identifier)
           .eq('password', password)
-          .ilike('role', 'student')   // handles 'Student' or 'student' casing
           .single();
 
         if (error || !data) {
@@ -112,7 +110,7 @@ export default function Login() {
           return;
         }
 
-        if (!data.room_number) {
+        if (!data.is_allocated) {
           setErrorMsg('Your room allocation is pending. Please see the Admin.');
           setIsLoading(false);
           return;
