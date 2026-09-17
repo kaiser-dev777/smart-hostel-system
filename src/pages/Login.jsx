@@ -5,19 +5,19 @@ import { supabase } from '../lib/supabase';
 import { User, Lock, LogIn, Shield, HardHat, GraduationCap, Info } from 'lucide-react';
 
 // ─── Per-role credential rules ────────────────────────────────────────────────
-// The 'profiles' table uses the 'matric_number' column to store the login
-// identifier for ALL roles (email for staff, matric no for students).
+// Students   → students table  (matric_no, password, is_allocated)
+// Porter/Admin → profiles table (matric_number column stores the identifier)
 const ROLE_CONFIG = {
   student: {
     identifierLabel: 'Matriculation Number',
     identifierType: 'text',
-    identifierPlaceholder: 'e.g. FCP/CSC/23/1046',
-    // Matric format used in DB: FACULTY/DEPT/YY/NUMBER
-    identifierPattern: /^[A-Z]+\/[A-Z]+\/\d{2,4}\/\d+$/i,
-    identifierHint: 'Format: FAC/DEPT/YY/NUMBER — e.g. FCP/CSC/23/1046',
+    identifierPlaceholder: 'e.g. FCP/CSC/22/1097',
+    // Accept any non-empty matric — formats vary (FAC/DEPT/YY/NUM)
+    identifierPattern: /^.{3,}$/,
+    identifierHint: 'Your matriculation number as registered by Admin',
     passwordLabel: 'Room Password',
-    passwordPlaceholder: 'e.g. 25A or 102C',
-    // Room passwords in DB are short alphanumeric strings
+    passwordPlaceholder: 'e.g. Block B - Room 1',
+    // Password is whatever the admin set — could be room name, short code, etc.
     passwordPattern: /^.{1,}$/,
     passwordHint: 'Your assigned room code (given by Admin)',
   },
@@ -81,12 +81,12 @@ export default function Login() {
     setErrorMsg('');
 
     if (!config.identifierPattern.test(identifier)) {
-      setErrorMsg(`Invalid ${config.identifierLabel} format. ${config.identifierHint}`);
+      setErrorMsg(`Invalid ${config.identifierLabel}. ${config.identifierHint}`);
       setIdentifierTouched(true);
       return;
     }
     if (!config.passwordPattern.test(password)) {
-      setErrorMsg(`Invalid password format. ${config.passwordHint}`);
+      setErrorMsg(`Invalid password. ${config.passwordHint}`);
       setPasswordTouched(true);
       return;
     }
@@ -94,16 +94,13 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      // ── 1. STUDENT LOGIN ──────────────────────────────────────────────────────
+      // ── 1. STUDENT LOGIN — queries the 'students' table ───────────────────────
       if (role === 'student') {
-        // Students are stored in the 'profiles' table with role='student'
-        // identifier = matric_number, password = password
         const { data, error } = await supabase
-          .from('profiles')
+          .from('students')
           .select('*')
-          .eq('matric_number', identifier)
+          .eq('matric_no', identifier)
           .eq('password', password)
-          .ilike('role', 'student')   // handles 'Student' or 'student' casing
           .single();
 
         if (error || !data) {
@@ -112,7 +109,7 @@ export default function Login() {
           return;
         }
 
-        if (!data.room_number) {
+        if (!data.is_allocated) {
           setErrorMsg('Your room allocation is pending. Please see the Admin.');
           setIsLoading(false);
           return;
@@ -121,9 +118,9 @@ export default function Login() {
         localStorage.setItem('currentUser', JSON.stringify({ ...data, role: 'student' }));
         navigate('/student-dashboard');
 
-      // ── 2. PORTER / ADMIN LOGIN ───────────────────────────────────────────────
+      // ── 2. PORTER / ADMIN LOGIN — queries the 'profiles' table ───────────────
       } else {
-        // Staff identifier is stored in the 'matric_number' column for all profiles
+        // Staff identifier is stored in the 'matric_number' column
         const { data, error } = await supabase
           .from('profiles')
           .select('*')

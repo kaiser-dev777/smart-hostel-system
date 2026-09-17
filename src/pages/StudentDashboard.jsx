@@ -34,12 +34,12 @@ export default function StudentDashboard() {
         .order('created_at', { ascending: false });
       if (reqData) setMyRequests(reqData);
 
-      // 2. Fetch Roommates
-      if (user.room_number) {
+      // 2. Fetch Roommates from students table (same room_assigned, excluding self)
+      if (user.room_assigned && user.room_assigned !== 'Unassigned') {
         const { data: roommateData } = await supabase
-          .from('profiles')
-          .select('full_name, matric_number')
-          .eq('room_number', user.room_number)
+          .from('students')
+          .select('full_name, matric_no')
+          .eq('room_assigned', user.room_assigned)
           .neq('id', user.id);
         if (roommateData) setRoommates(roommateData);
       }
@@ -65,7 +65,7 @@ export default function StudentDashboard() {
       .from('maintenance_requests')
       .insert([{ 
         student_name: studentProfile?.full_name || 'Anonymous', 
-        room_number: studentProfile?.room_number || 'N/A', 
+        room_number: studentProfile?.room_assigned || 'N/A', 
         issue_type: finalIssueDescription,
         status: 'Pending'
       }]);
@@ -90,10 +90,10 @@ export default function StudentDashboard() {
           <h2 className="text-3xl font-black text-gray-800">
             Welcome, {studentProfile.full_name.split(' ')[0]}! 👋
           </h2>
-          <p className="text-gray-500 font-medium">Matric Number: {studentProfile.matric_number}</p>
+          <p className="text-gray-500 font-medium">Matric Number: {studentProfile.matric_no}</p>
         </div>
         <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm">
-          {studentProfile.room_number || "Awaiting Allocation"}
+          {studentProfile.room_assigned || "Awaiting Allocation"}
         </div>
       </div>
 
@@ -133,7 +133,7 @@ export default function StudentDashboard() {
             <p>
               <strong className="text-gray-900">Room:</strong> 
               <span className="ml-2 font-mono bg-gray-100 px-2 py-1 rounded text-blue-700 font-bold">
-                {studentProfile.room_number || 'Pending...'}
+                {studentProfile.room_assigned || 'Pending...'}
               </span>
             </p>
             <p><strong className="text-gray-900">Capacity:</strong> 6 Students Max</p>
@@ -153,7 +153,7 @@ export default function StudentDashboard() {
           </div>
           
           <div className="space-y-2">
-            {!studentProfile.room_number ? (
+            {!studentProfile.room_assigned ? (
               <p className="text-sm text-gray-500 italic">No room assigned yet.</p>
             ) : roommates.length === 0 ? (
               <p className="text-sm text-gray-500 italic">No other students in this room yet.</p>
@@ -190,7 +190,7 @@ export default function StudentDashboard() {
             <div className="flex flex-col sm:flex-row gap-4">
               <select 
                 required
-                disabled={!studentProfile.room_number} 
+                disabled={!studentProfile.room_assigned}
                 value={issueType}
                 onChange={(e) => setIssueType(e.target.value)}
                 className="flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500 bg-white"
@@ -205,7 +205,7 @@ export default function StudentDashboard() {
               {!issueType.includes('Other') && (
                 <button 
                   type="submit" 
-                  disabled={isSubmitting || !studentProfile.room_number || !issueType}
+                  disabled={isSubmitting || !studentProfile.room_assigned || !issueType}
                   className="bg-red-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? 'Sending...' : 'Submit Report'}
