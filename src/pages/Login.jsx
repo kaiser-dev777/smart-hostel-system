@@ -118,27 +118,42 @@ export default function Login() {
         localStorage.setItem('currentUser', JSON.stringify({ ...data, role: 'student' }));
         navigate('/student-dashboard');
 
-      // ── 2. PORTER / ADMIN LOGIN — queries the 'profiles' table ───────────────
+      // ── 2. PORTER LOGIN — queries the 'porters' table ────────────────────────
+      } else if (role === 'porter') {
+        const { data, error } = await supabase
+          .from('porters')
+          .select('*')
+          .eq('matric_no', identifier)
+          .eq('password', password)
+          .single();
+
+        if (error || !data) {
+          setErrorMsg('Invalid porter credentials. Please check your Staff ID and password.');
+          setIsLoading(false);
+          return;
+        }
+
+        localStorage.setItem('currentUser', JSON.stringify({ ...data, role: 'porter' }));
+        navigate('/porter-dashboard');
+
+      // ── 3. ADMIN LOGIN — queries the 'profiles' table ─────────────────────────
       } else {
-        // Staff identifier is stored in the 'matric_number' column
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('matric_number', identifier)
           .eq('password', password)
-          .eq('role', role)
+          .eq('role', 'admin')
           .single();
 
         if (error || !data) {
-          setErrorMsg(`Invalid ${role} credentials. Please check your identifier and password.`);
+          setErrorMsg('Invalid admin credentials. Please check your identifier and password.');
           setIsLoading(false);
           return;
         }
 
         localStorage.setItem('currentUser', JSON.stringify(data));
-
-        if (role === 'admin') navigate('/super-admin');
-        if (role === 'porter') navigate('/porter-dashboard');
+        navigate('/super-admin');
       }
     } catch (err) {
       setErrorMsg('A system error occurred. Please try again.');
