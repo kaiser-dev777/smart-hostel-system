@@ -19,6 +19,7 @@ export default function AdminDashboard() {
   const [unallocatedStudents, setUnallocatedStudents] = useState([]);
   const [allocatedStudents, setAllocatedStudents] = useState([]);
   const [rooms, setRooms] = useState([]);
+  const [roomOccupancy, setRoomOccupancy] = useState({});
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [isAllocating, setIsAllocating] = useState(false);
@@ -61,20 +62,24 @@ export default function AdminDashboard() {
       setAllocatedStudents(studentsData.filter(s => s.is_allocated));
     }
 
-    // Rooms from inventory — exclude rooms already occupied by an allocated student
+    // Rooms from inventory — exclude only rooms that are fully occupied (6 students)
     const { data: roomsData } = await supabase
       .from('inventory')
       .select('room_number')
       .order('room_number', { ascending: true });
 
-    const occupiedRooms = new Set(
-      (studentsData || [])
-        .filter(s => s.is_allocated && s.room_assigned)
-        .map(s => s.room_assigned)
-    );
+    // Count how many allocated students are in each room
+    const occupancyMap = {};
+    (studentsData || [])
+      .filter(s => s.is_allocated && s.room_assigned)
+      .forEach(s => {
+        occupancyMap[s.room_assigned] = (occupancyMap[s.room_assigned] || 0) + 1;
+      });
+    setRoomOccupancy(occupancyMap);
 
     if (roomsData) {
-      setRooms(roomsData.filter(r => !occupiedRooms.has(r.room_number)));
+      // Only filter out rooms that have reached the 6-student cap
+      setRooms(roomsData.filter(r => (occupancyMap[r.room_number] || 0) < 6));
     }
 
     // Porter assignments
@@ -322,7 +327,7 @@ export default function AdminDashboard() {
                 <option value="" disabled>-- Choose a Room --</option>
                 {rooms.map(room => (
                   <option key={room.room_number} value={room.room_number}>
-                    {room.room_number}
+                    {room.room_number} — {roomOccupancy[room.room_number] || 0}/6 students
                   </option>
                 ))}
               </select>
