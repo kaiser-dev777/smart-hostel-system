@@ -61,12 +61,21 @@ export default function AdminDashboard() {
       setAllocatedStudents(studentsData.filter(s => s.is_allocated));
     }
 
-    // Rooms from inventory
+    // Rooms from inventory — exclude rooms already occupied by an allocated student
     const { data: roomsData } = await supabase
       .from('inventory')
       .select('room_number')
       .order('room_number', { ascending: true });
-    if (roomsData) setRooms(roomsData);
+
+    const occupiedRooms = new Set(
+      (studentsData || [])
+        .filter(s => s.is_allocated && s.room_assigned)
+        .map(s => s.room_assigned)
+    );
+
+    if (roomsData) {
+      setRooms(roomsData.filter(r => !occupiedRooms.has(r.room_number)));
+    }
 
     // Porter assignments
     const { data: porterData } = await supabase
