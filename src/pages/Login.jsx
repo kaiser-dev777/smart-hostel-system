@@ -24,13 +24,13 @@ const ROLE_CONFIG = {
   porter: {
     identifierLabel: 'Staff Identifier',
     identifierType: 'text',
-    identifierPlaceholder: 'e.g. Bala Porter',
-    identifierPattern: /^.{2,}$/,
-    identifierHint: 'Your name or ID as registered by Admin',
+    identifierPlaceholder: 'e.g. STF/2024/001',
+    identifierPattern: /^.{1,}$/,
+    identifierHint: 'Your Staff ID or name as registered by Admin',
     passwordLabel: 'Password',
-    passwordPlaceholder: '••••••••',
-    passwordPattern: /^.{4,}$/,
-    passwordHint: 'Password assigned to you by Admin',
+    passwordPlaceholder: 'e.g. A',
+    passwordPattern: /^.{1,}$/,   // passwords can be a single block letter (A, B, C)
+    passwordHint: 'Password assigned to you by Admin (e.g. your block letter)',
   },
   admin: {
     identifierLabel: 'Admin Identifier',
