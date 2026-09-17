@@ -93,10 +93,11 @@ export default function PorterDashboard() {
     const porter = profile || porterProfileRef.current;
     if (!porter) return;
 
-    // 1. Fetch Maintenance Requests (all — porter handles all requests)
+    // 1. Fetch Maintenance Requests — only rooms in this porter's block
     const { data: reqData } = await supabase
       .from('maintenance_requests')
       .select('*')
+      .like('room_number', `${porter.block_assigned}-%`)
       .order('created_at', { ascending: false });
     if (reqData) setRequests(reqData);
 
